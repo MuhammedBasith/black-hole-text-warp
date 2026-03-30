@@ -4,9 +4,9 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
   <title>Typographic Black Hole</title>
-  <meta name="description" content="Interactive text that warps around black holes. Click to create singularities." />
+  <meta name="description" content="Interactive text that warps around black holes in real-time." />
   <meta property="og:title" content="Typographic Black Hole" />
-  <meta property="og:description" content="Text warps, spirals, and lenses around black holes in real-time. Built with pretext." />
+  <meta property="og:description" content="Text warps, spirals, and lenses around black holes. Built with pretext." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,700;1,400&family=Inter:wght@300;400&display=swap" rel="stylesheet" />
@@ -15,129 +15,72 @@
     html, body {
       width: 100%; height: 100%;
       overflow: hidden;
-      background: #06060b;
-      font-family: 'EB Garamond', Georgia, serif;
+      background: #08080e;
       -webkit-font-smoothing: antialiased;
     }
-    canvas {
-      display: block;
-      width: 100%; height: 100%;
-    }
+    canvas { display: block; width: 100%; height: 100%; }
 
-    /* ── Cursor states ── */
     body { cursor: crosshair; }
     body.cursor-grab { cursor: grab; }
     body.cursor-grabbing { cursor: grabbing; }
-    body.cursor-pointer { cursor: pointer; }
 
-    /* ── HUD overlay ── */
     #hud {
-      position: fixed;
-      inset: 0;
-      pointer-events: none;
-      z-index: 10;
+      position: fixed; inset: 0;
+      pointer-events: none; z-index: 10;
     }
 
     #hint {
-      position: absolute;
-      top: 20px;
-      left: 50%;
-      transform: translateX(-50%);
-      color: rgba(232, 220, 200, 0.35);
-      font-size: 13px;
-      font-family: 'Inter', sans-serif;
-      font-weight: 300;
-      letter-spacing: 0.18em;
-      text-transform: uppercase;
+      position: absolute; top: 22px; left: 50%; transform: translateX(-50%);
+      color: rgba(200, 190, 175, 0.3);
+      font: 300 12px/1 'Inter', sans-serif;
+      letter-spacing: 0.2em; text-transform: uppercase;
       transition: opacity 2s ease;
-      white-space: nowrap;
     }
     #hint.hidden { opacity: 0; }
 
     #controls {
-      position: absolute;
-      bottom: 20px;
-      left: 50%;
-      transform: translateX(-50%);
-      display: flex;
-      gap: 20px;
-      opacity: 0;
-      transition: opacity 0.8s ease 1s;
+      position: absolute; bottom: 22px; left: 50%; transform: translateX(-50%);
+      display: flex; gap: 18px;
+      opacity: 0; transition: opacity 1s ease 0.5s;
     }
     #controls.visible { opacity: 1; }
 
-    .control-hint {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      color: rgba(232, 220, 200, 0.22);
-      font-size: 11px;
-      font-family: 'Inter', sans-serif;
-      font-weight: 300;
-      letter-spacing: 0.12em;
-      text-transform: uppercase;
+    .ch {
+      display: flex; align-items: center; gap: 5px;
+      color: rgba(200, 190, 175, 0.18);
+      font: 300 10px/1 'Inter', sans-serif;
+      letter-spacing: 0.1em; text-transform: uppercase;
     }
-    .key {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      min-width: 20px;
-      height: 20px;
-      padding: 0 5px;
-      border: 1px solid rgba(232, 220, 200, 0.15);
-      border-radius: 3px;
-      font-size: 10px;
-      color: rgba(232, 220, 200, 0.3);
-      font-family: 'Inter', sans-serif;
+    .k {
+      display: inline-flex; align-items: center; justify-content: center;
+      min-width: 18px; height: 18px; padding: 0 4px;
+      border: 1px solid rgba(200, 190, 175, 0.1); border-radius: 3px;
+      font-size: 9px; color: rgba(200, 190, 175, 0.22);
     }
 
-    /* ── Merge flash overlay ── */
     #flash {
-      position: fixed;
-      inset: 0;
-      background: radial-gradient(circle, rgba(255,180,100,0.15), transparent 70%);
-      opacity: 0;
-      pointer-events: none;
-      z-index: 5;
-      transition: opacity 0.08s ease-out;
+      position: fixed; inset: 0;
+      opacity: 0; pointer-events: none; z-index: 5;
+      transition: opacity 0.06s ease-out;
     }
-    #flash.active {
-      opacity: 1;
-      transition: none;
-    }
+    #flash.active { opacity: 1; transition: none; }
 
-    /* ── Stats ── */
     #stats {
-      position: absolute;
-      top: 20px;
-      right: 24px;
-      color: rgba(232, 220, 200, 0.18);
-      font-size: 11px;
-      font-family: 'Inter', sans-serif;
-      font-weight: 300;
+      position: absolute; top: 22px; right: 28px;
+      color: rgba(200, 190, 175, 0.15);
+      font: 300 10px/1.6 'Inter', sans-serif;
       letter-spacing: 0.08em;
-      text-align: right;
-      line-height: 1.6;
-      opacity: 0;
-      transition: opacity 0.5s ease;
+      opacity: 0; transition: opacity 0.5s ease;
     }
     #stats.visible { opacity: 1; }
 
-    /* ── Paused indicator ── */
     #paused-badge {
-      position: absolute;
-      top: 50%;
-      left: 50%;
+      position: absolute; top: 50%; left: 50%;
       transform: translate(-50%, -50%);
-      color: rgba(232, 220, 200, 0.25);
-      font-size: 14px;
-      font-family: 'Inter', sans-serif;
-      font-weight: 300;
-      letter-spacing: 0.3em;
-      text-transform: uppercase;
-      opacity: 0;
-      transition: opacity 0.3s ease;
-      pointer-events: none;
+      color: rgba(200, 190, 175, 0.2);
+      font: 300 13px/1 'Inter', sans-serif;
+      letter-spacing: 0.35em; text-transform: uppercase;
+      opacity: 0; transition: opacity 0.3s ease;
     }
     #paused-badge.visible { opacity: 1; }
   </style>
@@ -145,14 +88,14 @@
 <body>
   <div id="flash"></div>
   <div id="hud">
-    <div id="hint">Click anywhere to create a singularity</div>
+    <div id="hint">Click to create a singularity</div>
     <div id="stats"></div>
     <div id="controls">
-      <span class="control-hint"><span class="key">Click</span> Create</span>
-      <span class="control-hint"><span class="key">Drag</span> Move / Fling</span>
-      <span class="control-hint"><span class="key">Scroll</span> Mass</span>
-      <span class="control-hint"><span class="key">R</span> Reset</span>
-      <span class="control-hint"><span class="key">Space</span> Pause</span>
+      <span class="ch"><span class="k">Click</span> Create</span>
+      <span class="ch"><span class="k">Drag</span> Move</span>
+      <span class="ch"><span class="k">Scroll</span> Mass</span>
+      <span class="ch"><span class="k">R</span> Reset</span>
+      <span class="ch"><span class="k">Space</span> Pause</span>
     </div>
     <div id="paused-badge">Paused</div>
   </div>
