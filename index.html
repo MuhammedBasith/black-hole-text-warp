@@ -6,41 +6,156 @@
   <title>Typographic Black Hole</title>
   <meta name="description" content="Interactive text that warps around black holes. Click to create singularities." />
   <meta property="og:title" content="Typographic Black Hole" />
-  <meta property="og:description" content="Text warps, spirals, and lenses around black holes in real-time." />
+  <meta property="og:description" content="Text warps, spirals, and lenses around black holes in real-time. Built with pretext." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,700;1,400&family=Inter:wght@300;400&display=swap" rel="stylesheet" />
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body {
       width: 100%; height: 100%;
       overflow: hidden;
-      background: #0a0a0f;
-      cursor: crosshair;
+      background: #06060b;
       font-family: 'EB Garamond', Georgia, serif;
+      -webkit-font-smoothing: antialiased;
     }
     canvas {
       display: block;
       width: 100%; height: 100%;
     }
-    #hint {
+
+    /* ── Cursor states ── */
+    body { cursor: crosshair; }
+    body.cursor-grab { cursor: grab; }
+    body.cursor-grabbing { cursor: grabbing; }
+    body.cursor-pointer { cursor: pointer; }
+
+    /* ── HUD overlay ── */
+    #hud {
       position: fixed;
-      top: 16px;
-      left: 50%;
-      transform: translateX(-50%);
-      color: rgba(232, 220, 200, 0.4);
-      font-size: 14px;
-      font-family: 'EB Garamond', Georgia, serif;
-      letter-spacing: 0.1em;
+      inset: 0;
       pointer-events: none;
-      transition: opacity 1.5s ease;
       z-index: 10;
     }
+
+    #hint {
+      position: absolute;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: rgba(232, 220, 200, 0.35);
+      font-size: 13px;
+      font-family: 'Inter', sans-serif;
+      font-weight: 300;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      transition: opacity 2s ease;
+      white-space: nowrap;
+    }
     #hint.hidden { opacity: 0; }
+
+    #controls {
+      position: absolute;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 20px;
+      opacity: 0;
+      transition: opacity 0.8s ease 1s;
+    }
+    #controls.visible { opacity: 1; }
+
+    .control-hint {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: rgba(232, 220, 200, 0.22);
+      font-size: 11px;
+      font-family: 'Inter', sans-serif;
+      font-weight: 300;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+    .key {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 20px;
+      height: 20px;
+      padding: 0 5px;
+      border: 1px solid rgba(232, 220, 200, 0.15);
+      border-radius: 3px;
+      font-size: 10px;
+      color: rgba(232, 220, 200, 0.3);
+      font-family: 'Inter', sans-serif;
+    }
+
+    /* ── Merge flash overlay ── */
+    #flash {
+      position: fixed;
+      inset: 0;
+      background: radial-gradient(circle, rgba(255,180,100,0.15), transparent 70%);
+      opacity: 0;
+      pointer-events: none;
+      z-index: 5;
+      transition: opacity 0.08s ease-out;
+    }
+    #flash.active {
+      opacity: 1;
+      transition: none;
+    }
+
+    /* ── Stats ── */
+    #stats {
+      position: absolute;
+      top: 20px;
+      right: 24px;
+      color: rgba(232, 220, 200, 0.18);
+      font-size: 11px;
+      font-family: 'Inter', sans-serif;
+      font-weight: 300;
+      letter-spacing: 0.08em;
+      text-align: right;
+      line-height: 1.6;
+      opacity: 0;
+      transition: opacity 0.5s ease;
+    }
+    #stats.visible { opacity: 1; }
+
+    /* ── Paused indicator ── */
+    #paused-badge {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: rgba(232, 220, 200, 0.25);
+      font-size: 14px;
+      font-family: 'Inter', sans-serif;
+      font-weight: 300;
+      letter-spacing: 0.3em;
+      text-transform: uppercase;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+      pointer-events: none;
+    }
+    #paused-badge.visible { opacity: 1; }
   </style>
 </head>
 <body>
-  <div id="hint">Click to create a black hole &middot; Drag to fling</div>
+  <div id="flash"></div>
+  <div id="hud">
+    <div id="hint">Click anywhere to create a singularity</div>
+    <div id="stats"></div>
+    <div id="controls">
+      <span class="control-hint"><span class="key">Click</span> Create</span>
+      <span class="control-hint"><span class="key">Drag</span> Move / Fling</span>
+      <span class="control-hint"><span class="key">Scroll</span> Mass</span>
+      <span class="control-hint"><span class="key">R</span> Reset</span>
+      <span class="control-hint"><span class="key">Space</span> Pause</span>
+    </div>
+    <div id="paused-badge">Paused</div>
+  </div>
   <canvas id="canvas"></canvas>
   <script type="module" src="/src/main.ts"></script>
 </body>
