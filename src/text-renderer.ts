@@ -17,11 +17,12 @@ export function drawTextLines(
     const lineCenterX = line.x + line.width / 2
     const lineCenterY = line.y + BODY_LINE_HEIGHT / 2
 
-    // Find influence from closest black hole
+    // Accumulate influence from all black holes
     let closestDist = Infinity
     let closestHole: BlackHole | null = null
     let totalPullX = 0
     let totalPullY = 0
+    let maxInfluence = 0  // 0..1, how strongly any hole affects this line
 
     for (let h = 0; h < holes.length; h++) {
       const hole = holes[h]!
@@ -36,19 +37,19 @@ export function drawTextLines(
         closestHole = hole
       }
 
-      // Gravitational pull on text position
       if (dist < hole.influenceRadius) {
-        const strength = 1 - dist / hole.influenceRadius
-        const pullMag = strength * strength * 15 * hole.mass
+        const influence = 1 - dist / hole.influenceRadius
+        maxInfluence = Math.max(maxInfluence, influence)
+        const pullMag = influence * influence * 18 * hole.mass
         totalPullX += (dx / dist) * pullMag
-        totalPullY += (dy / dist) * pullMag
+        totalPullY += (dy / dist) * pullMag * 0.5  // less vertical pull
       }
     }
 
     if (!closestHole) {
-      // No black holes — render normally
-      ctx.globalAlpha = 0.88
-      ctx.fillStyle = '#e8dcc8'
+      // No black holes — clean default rendering
+      ctx.globalAlpha = 0.85
+      ctx.fillStyle = '#ddd5c4'
       ctx.fillText(line.text, line.x, line.y)
       continue
     }
@@ -56,42 +57,63 @@ export function drawTextLines(
     const distRatio = closestDist / closestHole.influenceRadius
     const inInfluence = distRatio < 1
 
-    // Opacity: fade as text approaches event horizon
+    // Opacity: smooth fade toward event horizon
     const eventDist = closestDist / closestHole.eventHorizon
     const alpha = inInfluence
-      ? clamp(smoothstep(0.8, 2.5, eventDist) * 0.92, 0, 0.92)
-      : 0.88
+      ? clamp(smoothstep(0.6, 3.0, eventDist) * 0.88, 0, 0.88)
+      : 0.85
 
     if (alpha < 0.01) continue
 
-    // Color: gold → orange → red as it gets closer
-    let hue: number, sat: number, lit: number
+    // Color: warm white → gold → amber → deep orange near the hole
+    let r: number, g: number, b: number
     if (inInfluence) {
-      const t = 1 - distRatio
-      hue = lerp(42, 5, t * t)
-      sat = lerp(30, 85, t)
-      lit = lerp(82, 60, t * 0.5)
+      const t = (1 - distRatio)
+      // Warm white → gold → orange → deep amber
+      r = Math.round(lerp(221, 255, Math.min(t * 1.5, 1)))
+      g = Math.round(lerp(213, 140 - t * 40, t))
+      b = Math.round(lerp(196, 50 - t * 30, t))
     } else {
-      hue = 42
-      sat = 20
-      lit = 82
+      r = 221; g = 213; b = 196
     }
 
-    // Rotation: subtle tilt toward the black hole
-    const rotation = inInfluence
-      ? (1 - distRatio) * (1 - distRatio) * 0.12 *
-        Math.sign(closestHole.x - lineCenterX) *
-        (closestHole.y > lineCenterY ? 1 : -1)
-      : 0
+    // Rotation: lines tilt toward the singularity
+    let rotation = 0
+    if (inInfluence) {
+      const angle = Math.atan2(closestHole.y - lineCenterY, closestHole.x - lineCenterX)
+      const strength = (1 - distRatio) * (1 - distRatio)
+      rotation = Math.sin(angle) * strength * 0.08
+    }
+
+    // Scale distortion: slight stretch as text approaches
+    const scaleX = inInfluence ? 1 + (1 - distRatio) * (1 - distRatio) * 0.04 : 1
 
     ctx.save()
     ctx.globalAlpha = alpha
-    ctx.fillStyle = `hsl(${hue}, ${sat}%, ${lit}%)`
-    ctx.translate(line.x + totalPullX, line.y + totalPullY)
-    if (Math.abs(rotation) > 0.001) {
-      ctx.rotate(rotation)
+
+    // Text shadow glow when very close to a hole
+    if (inInfluence && distRatio < 0.5) {
+      const glowStrength = (0.5 - distRatio) * 2
+      ctx.shadowColor = `rgba(255, 150, 60, ${glowStrength * 0.3})`
+      ctx.shadowBlur = 8 * glowStrength
     }
+
+    ctx.fillStyle = `rgb(${r}, ${g}, ${b})`
+    ctx.translate(line.x + totalPullX, line.y + totalPullY)
+
+    if (Math.abs(rotation) > 0.0005 || scaleX !== 1) {
+      ctx.translate(line.width / 2, BODY_LINE_HEIGHT / 2)
+      ctx.rotate(rotation)
+      ctx.scale(scaleX, 1)
+      ctx.translate(-line.width / 2, -BODY_LINE_HEIGHT / 2)
+    }
+
     ctx.fillText(line.text, 0, 0)
+
+    // Reset shadow
+    ctx.shadowColor = 'transparent'
+    ctx.shadowBlur = 0
+
     ctx.restore()
   }
 }
