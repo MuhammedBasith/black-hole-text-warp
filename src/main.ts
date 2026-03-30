@@ -2,20 +2,20 @@ import { BODY_TEXT } from './content.ts'
 import { prepareText, layoutColumns, type ColumnConfig } from './text-layout.ts'
 import {
   createBlackHole, updateBlackHoles, getHoleAtPoint, getHoleNearPoint,
-  type BlackHole, type MergeEvent,
+  type BlackHole,
 } from './black-hole.ts'
 import { drawTextLines } from './text-renderer.ts'
 import {
-  createStars, updateStars, drawStars, drawNebula,
+  createStars, drawStars, drawBackground,
   spawnParticles, updateParticles, drawParticles,
   spawnMergeBurst,
-  drawBlackHoles, drawGravitationalWaves,
+  drawBlackHoles,
   addShockwave, updateShockwaves, drawShockwaves,
   createScreenShake, triggerShake, updateShake,
   type Star, type Particle, type ScreenShake,
 } from './effects.ts'
 
-// ── Canvas setup ──
+// ── Canvas ──
 
 const canvas = document.getElementById('canvas') as HTMLCanvasElement
 const ctx = canvas.getContext('2d')!
@@ -26,9 +26,7 @@ const statsEl = document.getElementById('stats')!
 const pausedBadge = document.getElementById('paused-badge')!
 const body = document.body
 
-let W = 0
-let H = 0
-let dpr = 1
+let W = 0, H = 0, dpr = 1
 
 function resize() {
   dpr = window.devicePixelRatio || 1
@@ -37,7 +35,8 @@ function resize() {
   canvas.width = W * dpr
   canvas.height = H * dpr
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-  stars = createStars(Math.floor(W * H / 2500), W, H)
+  // Sparse stars — about 1 per 6000px² (much sparser than before)
+  stars = createStars(Math.floor(W * H / 6000), W, H)
   bgDirty = true
 }
 
@@ -55,27 +54,26 @@ let paused = false
 let totalMerges = 0
 const shake: ScreenShake = createScreenShake()
 
-// ── Cursor management ──
+// ── Cursor ──
 
-type CursorMode = 'default' | 'grab' | 'grabbing' | 'pointer'
+type CursorMode = 'default' | 'grab' | 'grabbing'
 let currentCursor: CursorMode = 'default'
 
 function setCursor(mode: CursorMode) {
   if (mode === currentCursor) return
-  body.classList.remove('cursor-grab', 'cursor-grabbing', 'cursor-pointer')
+  body.classList.remove('cursor-grab', 'cursor-grabbing')
   if (mode !== 'default') body.classList.add(`cursor-${mode}`)
   currentCursor = mode
 }
 
-// ── Interaction state ──
+// ── Interaction ──
 
-let pointerX = W / 2
-let pointerY = H / 2
+let pointerX = 0, pointerY = 0
 
 type DragState =
   | { type: 'none' }
   | { type: 'pending'; startX: number; startY: number; startTime: number; hole: BlackHole | null }
-  | { type: 'moving-hole'; hole: BlackHole; offsetX: number; offsetY: number }
+  | { type: 'moving-hole'; hole: BlackHole; offsetX: number; offsetY: number; lastX: number; lastY: number; lastTime: number }
   | { type: 'fling-new'; startX: number; startY: number; startTime: number }
 
 let drag: DragState = { type: 'none' }
@@ -83,16 +81,8 @@ let drag: DragState = { type: 'none' }
 canvas.addEventListener('pointerdown', (e) => {
   pointerX = e.clientX
   pointerY = e.clientY
-
   const hole = getHoleAtPoint(blackHoles, e.clientX, e.clientY)
-  drag = {
-    type: 'pending',
-    startX: e.clientX,
-    startY: e.clientY,
-    startTime: performance.now(),
-    hole,
-  }
-
+  drag = { type: 'pending', startX: e.clientX, startY: e.clientY, startTime: performance.now(), hole }
   if (hole) setCursor('grabbing')
 })
 
@@ -105,24 +95,16 @@ canvas.addEventListener('pointermove', (e) => {
     const dy = e.clientY - drag.startY
     if (dx * dx + dy * dy > 36) {
       if (drag.hole) {
-        // Start moving existing hole
         drag.hole.vx = 0
         drag.hole.vy = 0
         drag = {
-          type: 'moving-hole',
-          hole: drag.hole,
-          offsetX: drag.hole.x - drag.startX,
-          offsetY: drag.hole.y - drag.startY,
+          type: 'moving-hole', hole: drag.hole,
+          offsetX: drag.hole.x - drag.startX, offsetY: drag.hole.y - drag.startY,
+          lastX: e.clientX, lastY: e.clientY, lastTime: performance.now(),
         }
         setCursor('grabbing')
       } else {
-        // Start fling for new hole
-        drag = {
-          type: 'fling-new',
-          startX: drag.startX,
-          startY: drag.startY,
-          startTime: drag.startTime,
-        }
+        drag = { type: 'fling-new', startX: drag.startX, startY: drag.startY, startTime: drag.startTime }
       }
     }
   }
@@ -132,72 +114,62 @@ canvas.addEventListener('pointermove', (e) => {
     drag.hole.y = e.clientY + drag.offsetY
     drag.hole.vx = 0
     drag.hole.vy = 0
+    drag.lastX = e.clientX
+    drag.lastY = e.clientY
+    drag.lastTime = performance.now()
   }
 
-  // Update cursor when not dragging
   if (drag.type === 'none') {
-    const hoverHole = getHoleAtPoint(blackHoles, e.clientX, e.clientY)
-    if (hoverHole) {
-      setCursor('grab')
-    } else {
-      setCursor('default')
-    }
+    setCursor(getHoleAtPoint(blackHoles, e.clientX, e.clientY) ? 'grab' : 'default')
   }
 })
 
 canvas.addEventListener('pointerup', (e) => {
-  const x = e.clientX
-  const y = e.clientY
+  const x = e.clientX, y = e.clientY
 
   if (drag.type === 'pending') {
     if (drag.hole) {
-      // Clicked on hole — remove it with a small burst
+      // Click on hole → remove
       drag.hole.alive = false
-      addShockwave(drag.hole.x, drag.hole.y, drag.hole.mass * 0.5)
+      addShockwave(drag.hole.x, drag.hole.y, drag.hole.mass * 0.4)
     } else {
-      // Clicked empty space — create new hole
       spawnNewHole(x, y)
     }
   } else if (drag.type === 'fling-new') {
-    // Fling — create with velocity
     const dt = Math.max((performance.now() - drag.startTime) / 1000, 0.016)
-    const vx = (x - drag.startX) / dt * 0.12
-    const vy = (y - drag.startY) / dt * 0.12
+    const vx = (x - drag.startX) / dt * 0.1
+    const vy = (y - drag.startY) / dt * 0.1
     blackHoles.push(createBlackHole(drag.startX, drag.startY, vx, vy))
     hideHint()
   } else if (drag.type === 'moving-hole') {
-    // Release moved hole — give it velocity based on recent movement
-    // (velocity is already 0 from dragging, it just stays where placed)
+    // Give the hole throw velocity based on last movement
+    const dt = Math.max((performance.now() - drag.lastTime) / 1000, 0.016)
+    if (dt < 0.15) {  // only if the release was quick (not a slow place)
+      drag.hole.vx = (x - drag.lastX) / dt * 0.08
+      drag.hole.vy = (y - drag.lastY) / dt * 0.08
+    }
   }
 
   drag = { type: 'none' }
-
-  // Update cursor for new state
-  const hoverHole = getHoleAtPoint(blackHoles, x, y)
-  setCursor(hoverHole ? 'grab' : 'default')
+  setCursor(getHoleAtPoint(blackHoles, x, y) ? 'grab' : 'default')
 })
 
 function spawnNewHole(x: number, y: number) {
   let vx = 0, vy = 0
-
-  // Give orbital velocity if near existing holes
-  const aliveHoles = blackHoles.filter(h => h.alive)
-  if (aliveHoles.length > 0) {
-    let nearest: BlackHole | null = null
-    let nearestDist = Infinity
-    for (const h of aliveHoles) {
+  const alive = blackHoles.filter(h => h.alive)
+  if (alive.length > 0) {
+    let nearest: BlackHole | null = null, nd = Infinity
+    for (const h of alive) {
       const d = Math.sqrt((h.x - x) ** 2 + (h.y - y) ** 2)
-      if (d < nearestDist) { nearest = h; nearestDist = d }
+      if (d < nd) { nearest = h; nd = d }
     }
-    if (nearest && nearestDist < 400) {
-      const dx = x - nearest.x
-      const dy = y - nearest.y
-      const speed = 50 / Math.sqrt(nearestDist)
-      vx = -dy / nearestDist * speed
-      vy = dx / nearestDist * speed
+    if (nearest && nd < 350) {
+      const dx = x - nearest.x, dy = y - nearest.y
+      const speed = 40 / Math.sqrt(nd)
+      vx = -dy / nd * speed
+      vy = dx / nd * speed
     }
   }
-
   blackHoles.push(createBlackHole(x, y, vx, vy))
   hideHint()
 }
@@ -210,22 +182,18 @@ function hideHint() {
   }
 }
 
-// Scroll to adjust mass
 canvas.addEventListener('wheel', (e) => {
   e.preventDefault()
   const near = getHoleNearPoint(blackHoles, e.clientX, e.clientY)
   if (near) {
-    const delta = e.deltaY > 0 ? -0.12 : 0.12
+    const delta = e.deltaY > 0 ? -0.1 : 0.1
     near.mass = Math.max(0.3, Math.min(5, near.mass + delta))
     near.eventHorizon = 30 * Math.sqrt(near.mass)
     near.influenceRadius = 180 * Math.sqrt(near.mass)
   }
 }, { passive: false })
 
-// Touch support
 canvas.addEventListener('touchstart', (e) => e.preventDefault(), { passive: false })
-
-// ── Keyboard ──
 
 window.addEventListener('keydown', (e) => {
   if (e.key === ' ' || e.key === 'Spacebar') {
@@ -234,42 +202,30 @@ window.addEventListener('keydown', (e) => {
     pausedBadge.classList.toggle('visible', paused)
   }
   if (e.key === 'r' || e.key === 'R') {
-    blackHoles = []
-    particles = []
-    totalMerges = 0
+    blackHoles = []; particles = []; totalMerges = 0
     statsEl.classList.remove('visible')
-    if (!hintVisible) {
-      hint.classList.remove('hidden')
-      controlsEl.classList.remove('visible')
-      hintVisible = true
-    }
+    if (!hintVisible) { hint.classList.remove('hidden'); controlsEl.classList.remove('visible'); hintVisible = true }
   }
 })
 
 window.addEventListener('resize', resize)
 
-// ── Column layout config ──
+// ── Columns ──
 
 function getColumns(): ColumnConfig[] {
-  const gutter = W < 760 ? 24 : 52
-  const colGap = W < 760 ? 24 : 44
+  const gutter = W < 760 ? 28 : 56
+  const colGap = W < 760 ? 28 : 48
   const numCols = W < 600 ? 1 : W < 1000 ? 2 : 3
   const totalGap = gutter * 2 + colGap * (numCols - 1)
   const colWidth = (W - totalGap) / numCols
-
-  const columns: ColumnConfig[] = []
+  const cols: ColumnConfig[] = []
   for (let i = 0; i < numCols; i++) {
-    columns.push({
-      x: gutter + i * (colWidth + colGap),
-      width: colWidth,
-      startY: 56,
-      endY: H - 40,
-    })
+    cols.push({ x: gutter + i * (colWidth + colGap), width: colWidth, startY: 56, endY: H - 44 })
   }
-  return columns
+  return cols
 }
 
-// ── Background rendering ──
+// ── Background ──
 
 function renderBackground() {
   if (!bgCanvas || bgCanvas.width !== canvas.width || bgCanvas.height !== canvas.height) {
@@ -277,45 +233,33 @@ function renderBackground() {
   }
   const bgCtx = bgCanvas.getContext('2d')!
   bgCtx.setTransform(dpr, 0, 0, dpr, 0, 0)
-
-  bgCtx.fillStyle = '#06060b'
-  bgCtx.fillRect(0, 0, W, H)
-  drawNebula(bgCtx, W, H)
-
+  drawBackground(bgCtx, W, H)
   bgDirty = false
 }
 
 // ── Merge flash ──
 
-let flashTimer = 0
-function triggerFlash(x: number, y: number) {
-  flash.style.background = `radial-gradient(circle at ${x}px ${y}px, rgba(255,180,100,0.2), transparent 60%)`
+function triggerFlash(x: number, y: number, mass: number) {
+  const intensity = Math.min(0.2, 0.08 + mass * 0.03)
+  flash.style.background = `radial-gradient(circle at ${x}px ${y}px, rgba(255,190,120,${intensity}), transparent 55%)`
   flash.classList.add('active')
-  flashTimer = performance.now()
-  setTimeout(() => flash.classList.remove('active'), 80)
+  setTimeout(() => flash.classList.remove('active'), 60)
 }
 
-// ── Stats display ──
+// ── Stats ──
 
-let statsUpdateTimer = 0
+let statsTimer = 0
 function updateStats() {
   const now = performance.now()
-  if (now - statsUpdateTimer < 500) return
-  statsUpdateTimer = now
-
+  if (now - statsTimer < 500) return
+  statsTimer = now
   const alive = blackHoles.filter(h => h.alive).length
-  if (alive === 0 && totalMerges === 0) {
-    statsEl.classList.remove('visible')
-    return
-  }
-
+  if (alive === 0 && totalMerges === 0) { statsEl.classList.remove('visible'); return }
   statsEl.classList.add('visible')
-  const totalMass = blackHoles.reduce((sum, h) => h.alive ? sum + h.mass : sum, 0)
-  statsEl.innerHTML = [
-    `${alive} singularit${alive === 1 ? 'y' : 'ies'}`,
-    `${totalMass.toFixed(1)}M total mass`,
-    totalMerges > 0 ? `${totalMerges} merge${totalMerges === 1 ? '' : 's'}` : '',
-  ].filter(Boolean).join('<br>')
+  const totalMass = blackHoles.reduce((s, h) => h.alive ? s + h.mass : s, 0)
+  const parts = [`${alive} singularit${alive === 1 ? 'y' : 'ies'}`, `${totalMass.toFixed(1)}M`]
+  if (totalMerges > 0) parts.push(`${totalMerges} merge${totalMerges === 1 ? '' : 's'}`)
+  statsEl.textContent = parts.join('  ·  ')
 }
 
 // ── Main loop ──
@@ -326,36 +270,26 @@ function frame(now: number) {
   const dt = paused ? 0 : Math.min(rawDt, 0.05)
   time += dt
 
-  // Clean up dead holes
   blackHoles = blackHoles.filter(h => h.alive)
 
   if (!paused) {
-    // Physics
     const mergeEvents = updateBlackHoles(blackHoles, dt, W, H)
 
-    // Handle merge events
     for (const event of mergeEvents) {
       totalMerges++
       addShockwave(event.x, event.y, event.mass)
-      triggerShake(shake, 4 + event.mass * 3)
-      triggerFlash(event.x, event.y)
-
-      // Spawn burst particles
-      const survivorIdx = blackHoles.findIndex(h => h.alive && Math.abs(h.x - event.x) < 5 && Math.abs(h.y - event.y) < 5)
-      if (survivorIdx >= 0) {
-        spawnMergeBurst(particles, event, survivorIdx)
-      }
+      triggerShake(shake, 3 + event.mass * 2)
+      triggerFlash(event.x, event.y, event.mass)
+      const idx = blackHoles.findIndex(h => h.alive && Math.abs(h.x - event.x) < 5 && Math.abs(h.y - event.y) < 5)
+      if (idx >= 0) spawnMergeBurst(particles, event, idx)
     }
 
-    // Particles & stars
     particles = spawnParticles(blackHoles, particles)
     updateParticles(particles, blackHoles, dt)
-    updateStars(stars, blackHoles, dt)
     updateShockwaves(dt)
     updateShake(shake)
   }
 
-  // Layout text
   const columns = getColumns()
   const lines = layoutColumns(blackHoles, columns)
 
@@ -363,11 +297,7 @@ function frame(now: number) {
   if (bgDirty) renderBackground()
 
   ctx.save()
-
-  // Apply screen shake
-  if (shake.intensity > 0) {
-    ctx.translate(shake.offsetX, shake.offsetY)
-  }
+  if (shake.intensity > 0) ctx.translate(shake.offsetX, shake.offsetY)
 
   // Background
   if (bgCanvas) {
@@ -378,52 +308,29 @@ function frame(now: number) {
     ctx.setTransform(dpr, 0, 0, dpr, shake.offsetX, shake.offsetY)
   }
 
-  // Stars
-  drawStars(ctx, stars, blackHoles, time)
-
-  // Gravitational wave ripples
-  drawGravitationalWaves(ctx, blackHoles, time)
-
-  // Text
+  drawStars(ctx, stars, blackHoles)
   drawTextLines(ctx, lines, blackHoles, time)
-
-  // Shockwave rings
   drawShockwaves(ctx)
-
-  // Particles (in front of text, behind holes)
   drawParticles(ctx, particles)
-
-  // Black holes on top
   drawBlackHoles(ctx, blackHoles, time)
 
-  // Draw drag preview line when flinging
+  // Fling preview
   if (drag.type === 'fling-new') {
-    const dx = pointerX - drag.startX
-    const dy = pointerY - drag.startY
-    const len = Math.sqrt(dx * dx + dy * dy)
-    if (len > 5) {
-      ctx.strokeStyle = 'rgba(200, 160, 255, 0.2)'
-      ctx.lineWidth = 1
-      ctx.setLineDash([4, 6])
+    const dx = pointerX - drag.startX, dy = pointerY - drag.startY
+    if (dx * dx + dy * dy > 25) {
+      ctx.strokeStyle = 'rgba(255,200,150,0.12)'
+      ctx.lineWidth = 0.8
+      ctx.setLineDash([3, 5])
       ctx.beginPath()
       ctx.moveTo(drag.startX, drag.startY)
       ctx.lineTo(pointerX, pointerY)
       ctx.stroke()
       ctx.setLineDash([])
-
-      // Small circle at spawn point
-      ctx.strokeStyle = 'rgba(200, 160, 255, 0.15)'
-      ctx.beginPath()
-      ctx.arc(drag.startX, drag.startY, 30, 0, Math.PI * 2)
-      ctx.stroke()
     }
   }
 
   ctx.restore()
-
-  // Update stats
   updateStats()
-
   requestAnimationFrame(frame)
 }
 
@@ -431,7 +338,6 @@ function frame(now: number) {
 
 async function init() {
   await document.fonts.ready
-
   resize()
   prepareText(BODY_TEXT)
   lastFrame = performance.now()
