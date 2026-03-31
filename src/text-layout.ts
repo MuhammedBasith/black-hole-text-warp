@@ -3,10 +3,12 @@ import {
   layoutNextLine,
   type PreparedTextWithSegments,
   type LayoutCursor,
-  type LayoutLine,
 } from '@chenglou/pretext'
 import type { BlackHole } from './black-hole.ts'
-import { BODY_FONT, BODY_LINE_HEIGHT, MIN_SLOT_WIDTH } from './content.ts'
+import {
+  BODY_FONT, BODY_LINE_HEIGHT, MIN_SLOT_WIDTH,
+  DROP_CAP_LINES, DROP_CAP_FONT_TEMPLATE, PARAGRAPH_SPACING,
+} from './content.ts'
 
 type Interval = { left: number; right: number }
 
@@ -17,10 +19,28 @@ export type PositionedLine = {
   width: number
 }
 
-let prepared: PreparedTextWithSegments | null = null
+export type DropCapInfo = {
+  letter: string
+  x: number
+  y: number
+  font: string
+  size: number
+} | null
 
-export function prepareText(text: string) {
-  prepared = prepareWithSegments(text, BODY_FONT)
+// Prepared paragraphs
+let preparedParagraphs: PreparedTextWithSegments[] = []
+let dropCapLetter = ''
+
+export function prepareText(paragraphs: string[]) {
+  if (paragraphs.length === 0) return
+  // First paragraph: strip first letter for drop cap
+  dropCapLetter = paragraphs[0]![0] || ''
+  const firstRest = paragraphs[0]!.slice(1)
+
+  preparedParagraphs = [
+    prepareWithSegments(firstRest, BODY_FONT),
+    ...paragraphs.slice(1).map(p => prepareWithSegments(p, BODY_FONT)),
+  ]
 }
 
 function circleIntervalForBand(
@@ -39,15 +59,10 @@ function circleIntervalForBand(
 
 function carveSlots(base: Interval, blocked: Interval[]): Interval[] {
   let slots = [base]
-  for (let i = 0; i < blocked.length; i++) {
-    const interval = blocked[i]!
+  for (const interval of blocked) {
     const next: Interval[] = []
-    for (let j = 0; j < slots.length; j++) {
-      const slot = slots[j]!
-      if (interval.right <= slot.left || interval.left >= slot.right) {
-        next.push(slot)
-        continue
-      }
+    for (const slot of slots) {
+      if (interval.right <= slot.left || interval.left >= slot.right) { next.push(slot); continue }
       if (interval.left > slot.left) next.push({ left: slot.left, right: interval.left })
       if (interval.right < slot.right) next.push({ left: interval.right, right: slot.right })
     }
@@ -63,36 +78,52 @@ export type ColumnConfig = {
   endY: number
 }
 
+export type LayoutResult = {
+  lines: PositionedLine[]
+  dropCap: DropCapInfo
+}
+
 export function layoutColumns(
   holes: BlackHole[],
   columns: ColumnConfig[],
-): PositionedLine[] {
-  if (!prepared) return []
+): LayoutResult {
+  if (preparedParagraphs.length === 0) return { lines: [], dropCap: null }
 
   const lines: PositionedLine[] = []
+  let globalLineIdx = 0
+
+  // Drop cap dimensions
+  const dropCapSize = BODY_LINE_HEIGHT * DROP_CAP_LINES * 0.92
+  const dropCapWidth = dropCapSize * 0.65 + 8
+
+  let dropCap: DropCapInfo = null
+  let paraIdx = 0
   let cursor: LayoutCursor = { segmentIndex: 0, graphemeIndex: 0 }
-  let textExhausted = false
+  let allDone = false
 
   for (let colIdx = 0; colIdx < columns.length; colIdx++) {
-    if (textExhausted) break
+    if (allDone) break
     const col = columns[colIdx]!
     let y = col.startY
 
     while (y + BODY_LINE_HEIGHT <= col.endY) {
-      if (textExhausted) break
+      if (allDone) break
+
       const bandTop = y
       const bandBottom = y + BODY_LINE_HEIGHT
 
-      // Compute blocked intervals from all black holes
+      // Black hole exclusions
       const blocked: Interval[] = []
-      for (let h = 0; h < holes.length; h++) {
-        const hole = holes[h]!
+      for (const hole of holes) {
         if (!hole.alive) continue
-        const interval = circleIntervalForBand(
-          hole.x, hole.y, hole.influenceRadius,
-          bandTop, bandBottom, 8,
-        )
+        const interval = circleIntervalForBand(hole.x, hole.y, hole.exclusionRadius, bandTop, bandBottom, 6)
         if (interval) blocked.push(interval)
+      }
+
+      // Drop cap exclusion for first few lines of first column
+      const inDropCapZone = colIdx === 0 && globalLineIdx < DROP_CAP_LINES
+      if (inDropCapZone) {
+        blocked.push({ left: col.x - 5, right: col.x + dropCapWidth })
       }
 
       const base: Interval = { left: col.x, right: col.x + col.width }
@@ -100,35 +131,48 @@ export function layoutColumns(
 
       if (slots.length === 0) {
         y += BODY_LINE_HEIGHT
+        globalLineIdx++
         continue
       }
 
-      // Use the widest slot
+      // Widest slot
       let bestSlot = slots[0]!
       for (let s = 1; s < slots.length; s++) {
         const slot = slots[s]!
-        if (slot.right - slot.left > bestSlot.right - bestSlot.left) {
-          bestSlot = slot
-        }
+        if (slot.right - slot.left > bestSlot.right - bestSlot.left) bestSlot = slot
       }
 
-      const slotWidth = bestSlot.right - bestSlot.left
-      const line = layoutNextLine(prepared, cursor, slotWidth)
+      const prepared = preparedParagraphs[paraIdx]!
+      const line = layoutNextLine(prepared, cursor, bestSlot.right - bestSlot.left)
+
       if (line === null) {
-        textExhausted = true
-        break
+        // Paragraph exhausted — move to next
+        paraIdx++
+        cursor = { segmentIndex: 0, graphemeIndex: 0 }
+        if (paraIdx >= preparedParagraphs.length) { allDone = true; break }
+        // Add paragraph spacing
+        y += PARAGRAPH_SPACING
+        continue
       }
 
-      lines.push({
-        text: line.text,
-        x: bestSlot.left,
-        y: y,
-        width: line.width,
-      })
+      lines.push({ text: line.text, x: bestSlot.left, y, width: line.width })
       cursor = line.end
       y += BODY_LINE_HEIGHT
+      globalLineIdx++
     }
   }
 
-  return lines
+  // Drop cap info
+  if (dropCapLetter && columns.length > 0) {
+    const col = columns[0]!
+    dropCap = {
+      letter: dropCapLetter,
+      x: col.x,
+      y: col.startY,
+      font: DROP_CAP_FONT_TEMPLATE.replace('{{SIZE}}', String(Math.round(dropCapSize))),
+      size: dropCapSize,
+    }
+  }
+
+  return { lines, dropCap }
 }
