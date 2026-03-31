@@ -9,7 +9,7 @@
   <meta property="og:description" content="Text warps, spirals, and lenses around black holes. Built with pretext." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,700;1,400&family=Inter:wght@300;400&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Inter:wght@300;400&display=swap" rel="stylesheet" />
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body {
@@ -24,38 +24,39 @@
     body.cursor-grab { cursor: grab; }
     body.cursor-grabbing { cursor: grabbing; }
 
-    #hud {
-      position: fixed; inset: 0;
-      pointer-events: none; z-index: 10;
+    #hud { position: fixed; inset: 0; pointer-events: none; z-index: 10; }
+
+    /* ── Onboarding: top bar, not center ── */
+    #onboarding {
+      position: absolute; top: 18px; left: 50%; transform: translateX(-50%);
+      text-align: center;
+      transition: opacity 1.8s ease;
+    }
+    #onboarding.hidden { opacity: 0; pointer-events: none; }
+    #onboarding span {
+      font: 300 11px/1 'Inter', sans-serif;
+      letter-spacing: 0.25em; text-transform: uppercase;
+      color: rgba(196, 184, 168, 0.3);
     }
 
-    #hint {
-      position: absolute; top: 22px; left: 50%; transform: translateX(-50%);
-      color: rgba(200, 190, 175, 0.3);
-      font: 300 12px/1 'Inter', sans-serif;
-      letter-spacing: 0.2em; text-transform: uppercase;
-      transition: opacity 2s ease;
-    }
-    #hint.hidden { opacity: 0; }
-
+    /* ── Controls ── */
     #controls {
-      position: absolute; bottom: 22px; left: 50%; transform: translateX(-50%);
+      position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
       display: flex; gap: 18px;
-      opacity: 0; transition: opacity 1s ease 0.5s;
+      opacity: 0; transition: opacity 0.8s ease 0.3s;
     }
     #controls.visible { opacity: 1; }
-
     .ch {
       display: flex; align-items: center; gap: 5px;
-      color: rgba(200, 190, 175, 0.18);
-      font: 300 10px/1 'Inter', sans-serif;
-      letter-spacing: 0.1em; text-transform: uppercase;
+      color: rgba(196, 184, 168, 0.14);
+      font: 400 10px/1 'Inter', sans-serif;
+      letter-spacing: 0.08em; text-transform: uppercase;
     }
     .k {
       display: inline-flex; align-items: center; justify-content: center;
-      min-width: 18px; height: 18px; padding: 0 4px;
-      border: 1px solid rgba(200, 190, 175, 0.1); border-radius: 3px;
-      font-size: 9px; color: rgba(200, 190, 175, 0.22);
+      min-width: 20px; height: 20px; padding: 0 5px;
+      border: 1px solid rgba(196, 184, 168, 0.07); border-radius: 4px;
+      font-size: 9px; color: rgba(196, 184, 168, 0.18);
     }
 
     #flash {
@@ -66,38 +67,49 @@
     #flash.active { opacity: 1; transition: none; }
 
     #stats {
-      position: absolute; top: 22px; right: 28px;
-      color: rgba(200, 190, 175, 0.15);
+      position: absolute; top: 20px; right: 24px;
+      color: rgba(196, 184, 168, 0.12);
       font: 300 10px/1.6 'Inter', sans-serif;
-      letter-spacing: 0.08em;
+      letter-spacing: 0.06em;
       opacity: 0; transition: opacity 0.5s ease;
     }
     #stats.visible { opacity: 1; }
 
     #paused-badge {
-      position: absolute; top: 50%; left: 50%;
-      transform: translate(-50%, -50%);
-      color: rgba(200, 190, 175, 0.2);
-      font: 300 13px/1 'Inter', sans-serif;
-      letter-spacing: 0.35em; text-transform: uppercase;
+      position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      color: rgba(196, 184, 168, 0.16);
+      font: 400 12px/1 'Inter', sans-serif;
+      letter-spacing: 0.4em; text-transform: uppercase;
       opacity: 0; transition: opacity 0.3s ease;
     }
     #paused-badge.visible { opacity: 1; }
+
+    #attr {
+      position: absolute; bottom: 20px; right: 24px;
+      color: rgba(196, 184, 168, 0.08);
+      font: 300 9px/1 'Inter', sans-serif;
+      letter-spacing: 0.04em;
+    }
+    #attr a {
+      color: rgba(196, 184, 168, 0.14); text-decoration: none; pointer-events: auto;
+    }
+    #attr a:hover { color: rgba(196, 184, 168, 0.28); }
   </style>
 </head>
 <body>
   <div id="flash"></div>
   <div id="hud">
-    <div id="hint">Click to create a singularity</div>
+    <div id="onboarding"><span>Click to create a singularity &middot; Drag to fling</span></div>
     <div id="stats"></div>
     <div id="controls">
       <span class="ch"><span class="k">Click</span> Create</span>
-      <span class="ch"><span class="k">Drag</span> Move</span>
+      <span class="ch"><span class="k">Drag</span> Move / Fling</span>
       <span class="ch"><span class="k">Scroll</span> Mass</span>
       <span class="ch"><span class="k">R</span> Reset</span>
       <span class="ch"><span class="k">Space</span> Pause</span>
     </div>
     <div id="paused-badge">Paused</div>
+    <div id="attr">Powered by <a href="https://github.com/chenglou/pretext" target="_blank" rel="noopener">pretext</a></div>
   </div>
   <canvas id="canvas"></canvas>
   <script type="module" src="/src/main.ts"></script>
