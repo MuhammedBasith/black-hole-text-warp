@@ -4,18 +4,18 @@ export interface BlackHole {
   vx: number
   vy: number
   mass: number
-  eventHorizon: number
-  influenceRadius: number
+  eventHorizon: number       // visual black core radius
+  exclusionRadius: number    // text exclusion zone (smaller, tighter)
+  influenceRadius: number    // gravitational influence (larger, for inspiral detection)
   accretionAngle: number
-  accretionSpeed: number  // speeds up during inspiral
+  accretionSpeed: number
   age: number
   alive: boolean
   spawnScale: number
   shockwave: number
   shockwaveMass: number
-  // Inspiral state
-  inspiral: number         // 0 = not inspiraling, 0..1 = how deep into inspiral phase
-  inspiralPartner: number  // index of the hole we're spiraling toward
+  inspiral: number
+  inspiralPartner: number
 }
 
 export interface MergeEvent {
@@ -24,19 +24,21 @@ export interface MergeEvent {
   mass: number
 }
 
-const G = 800
-const INSPIRAL_THRESHOLD = 2.5  // start inspiral at this * sum of event horizons
-const MERGE_THRESHOLD = 0.6     // actually merge at this * sum of event horizons
+// Slower, more deliberate gravity
+const G = 400
+const INSPIRAL_THRESHOLD = 3.5   // start inspiral at 3.5x sum of event horizons — much wider range
+const MERGE_THRESHOLD = 0.5      // merge when very close
 
 export function createBlackHole(x: number, y: number, vx = 0, vy = 0, mass = 1): BlackHole {
-  const eh = 30 * Math.sqrt(mass)
+  const eh = 28 * Math.sqrt(mass)
   return {
     x, y, vx, vy,
     mass,
     eventHorizon: eh,
-    influenceRadius: 180 * Math.sqrt(mass),
+    exclusionRadius: eh * 2.8,           // text carves out ~2.8x the visual core
+    influenceRadius: eh * 7,             // gravity field extends much further
     accretionAngle: Math.random() * Math.PI * 2,
-    accretionSpeed: 0.3,
+    accretionSpeed: 0.25,
     age: 0,
     alive: true,
     spawnScale: 0,
@@ -47,20 +49,25 @@ export function createBlackHole(x: number, y: number, vx = 0, vy = 0, mass = 1):
   }
 }
 
+function recalcRadii(h: BlackHole) {
+  h.eventHorizon = 28 * Math.sqrt(h.mass)
+  h.exclusionRadius = h.eventHorizon * 2.8
+  h.influenceRadius = h.eventHorizon * 7
+}
+
 export function updateBlackHoles(
   holes: BlackHole[], dt: number, width: number, height: number,
 ): MergeEvent[] {
   const mergeEvents: MergeEvent[] = []
 
-  // Reset inspiral state
-  for (let i = 0; i < holes.length; i++) {
-    const h = holes[i]!
+  // Reset inspiral
+  for (const h of holes) {
     if (!h.alive) continue
     h.inspiral = 0
     h.inspiralPartner = -1
   }
 
-  // N-body gravity + inspiral detection
+  // N-body gravity + inspiral
   for (let i = 0; i < holes.length; i++) {
     const a = holes[i]!
     if (!a.alive) continue
@@ -74,25 +81,22 @@ export function updateBlackHoles(
       const dist = Math.sqrt(distSq)
       const sumEH = a.eventHorizon + b.eventHorizon
 
-      // Merge: only when very close
+      // Merge
       if (dist < sumEH * MERGE_THRESHOLD) {
-        const event = mergeBlackHoles(a, b)
-        mergeEvents.push(event)
+        mergeEvents.push(mergeBlackHoles(a, b))
         continue
       }
 
-      // Inspiral phase: when within threshold, add extra drag pulling them together
-      // and speed up their accretion rotation
+      // Inspiral phase — wider range, slower pull
       if (dist < sumEH * INSPIRAL_THRESHOLD) {
-        const inspiralDepth = 1 - (dist - sumEH * MERGE_THRESHOLD) / (sumEH * (INSPIRAL_THRESHOLD - MERGE_THRESHOLD))
-        const clamped = Math.max(0, Math.min(1, inspiralDepth))
+        const range = sumEH * (INSPIRAL_THRESHOLD - MERGE_THRESHOLD)
+        const depth = Math.max(0, Math.min(1, 1 - (dist - sumEH * MERGE_THRESHOLD) / range))
 
-        // Mark both holes as inspiraling
-        if (clamped > a.inspiral) { a.inspiral = clamped; a.inspiralPartner = j }
-        if (clamped > b.inspiral) { b.inspiral = clamped; b.inspiralPartner = i }
+        if (depth > a.inspiral) { a.inspiral = depth; a.inspiralPartner = j }
+        if (depth > b.inspiral) { b.inspiral = depth; b.inspiralPartner = i }
 
-        // Extra inward force during inspiral (gravitational radiation drains orbital energy)
-        const inspiralForce = clamped * clamped * G * 3 * (a.mass + b.mass)
+        // Inward drag — gradual, not aggressive
+        const inspiralForce = depth * depth * G * 1.5 * (a.mass + b.mass)
         const ifx = inspiralForce * dx / dist * dt
         const ify = inspiralForce * dy / dist * dt
         a.vx += ifx / a.mass
@@ -100,21 +104,27 @@ export function updateBlackHoles(
         b.vx -= ifx / b.mass
         b.vy -= ify / b.mass
 
-        // Speed up accretion disk rotation as they inspiral
-        a.accretionSpeed = 0.3 + clamped * clamped * 4
-        b.accretionSpeed = 0.3 + clamped * clamped * 4
+        // Tangential kick for visible spiral orbit
+        const tangent = depth * depth * 0.3 * dt
+        a.vx += (-dy / dist) * tangent * G * b.mass / (dist + 40)
+        a.vy += (dx / dist) * tangent * G * b.mass / (dist + 40)
+        b.vx += (dy / dist) * tangent * G * a.mass / (dist + 40)
+        b.vy += (-dx / dist) * tangent * G * a.mass / (dist + 40)
 
-        // Add tangential velocity for the spiral visual
-        // (perpendicular kick so they orbit faster as they get closer)
-        const tangentScale = clamped * 0.5 * dt
-        a.vx += (-dy / dist) * tangentScale * G * b.mass / (dist + 50)
-        a.vy += (dx / dist) * tangentScale * G * b.mass / (dist + 50)
-        b.vx += (dy / dist) * tangentScale * G * a.mass / (dist + 50)
-        b.vy += (-dx / dist) * tangentScale * G * a.mass / (dist + 50)
+        // Accretion speedup
+        a.accretionSpeed = 0.25 + depth * depth * 3
+        b.accretionSpeed = 0.25 + depth * depth * 3
+
+        // Dampen velocity as they get very close — makes the spiral tighter/slower
+        if (depth > 0.7) {
+          const dampen = 1 - (depth - 0.7) * 0.3 * dt
+          a.vx *= dampen; a.vy *= dampen
+          b.vx *= dampen; b.vy *= dampen
+        }
       }
 
-      // Normal gravitational force
-      const softening = 40
+      // Normal gravity — slower G
+      const softening = 30
       const force = G * a.mass * b.mass / (distSq + softening * softening)
       const fx = force * dx / dist
       const fy = force * dy / dist
@@ -126,9 +136,8 @@ export function updateBlackHoles(
     }
   }
 
-  // Update positions and animations
-  for (let i = 0; i < holes.length; i++) {
-    const h = holes[i]!
+  // Update positions
+  for (const h of holes) {
     if (!h.alive) continue
 
     h.x += h.vx * dt
@@ -136,32 +145,27 @@ export function updateBlackHoles(
     h.age += dt
     h.accretionAngle += h.accretionSpeed * dt / Math.sqrt(h.mass)
 
-    // Reset accretion speed if not inspiraling
     if (h.inspiral === 0) {
-      h.accretionSpeed += (0.3 - h.accretionSpeed) * dt * 3 // ease back to normal
+      h.accretionSpeed += (0.25 - h.accretionSpeed) * dt * 2
     }
 
-    // Spawn scale
-    if (h.spawnScale < 1) {
-      h.spawnScale = Math.min(1, h.spawnScale + dt * 4)
-    }
+    if (h.spawnScale < 1) h.spawnScale = Math.min(1, h.spawnScale + dt * 3.5)
 
-    // Shockwave decay
     if (h.shockwave > 0) {
-      h.shockwave += dt * 2.5
+      h.shockwave += dt * 2
       if (h.shockwave > 1) h.shockwave = 0
     }
 
-    // Boundary bounce
-    const margin = h.eventHorizon
-    if (h.x < margin) { h.x = margin; h.vx = Math.abs(h.vx) * 0.3 }
-    if (h.x > width - margin) { h.x = width - margin; h.vx = -Math.abs(h.vx) * 0.3 }
-    if (h.y < margin) { h.y = margin; h.vy = Math.abs(h.vy) * 0.3 }
-    if (h.y > height - margin) { h.y = height - margin; h.vy = -Math.abs(h.vy) * 0.3 }
+    // Boundary
+    const m = h.eventHorizon
+    if (h.x < m) { h.x = m; h.vx = Math.abs(h.vx) * 0.2 }
+    if (h.x > width - m) { h.x = width - m; h.vx = -Math.abs(h.vx) * 0.2 }
+    if (h.y < m) { h.y = m; h.vy = Math.abs(h.vy) * 0.2 }
+    if (h.y > height - m) { h.y = height - m; h.vy = -Math.abs(h.vy) * 0.2 }
 
-    // Friction
-    h.vx *= 0.998
-    h.vy *= 0.998
+    // Light friction
+    h.vx *= 0.997
+    h.vy *= 0.997
   }
 
   return mergeEvents
@@ -169,25 +173,21 @@ export function updateBlackHoles(
 
 function mergeBlackHoles(a: BlackHole, b: BlackHole): MergeEvent {
   const [big, small] = a.mass >= b.mass ? [a, b] : [b, a]
-  const totalMass = big.mass + small.mass
+  const total = big.mass + small.mass
+  const mx = (big.x * big.mass + small.x * small.mass) / total
+  const my = (big.y * big.mass + small.y * small.mass) / total
 
-  const mx = (big.x * big.mass + small.x * small.mass) / totalMass
-  const my = (big.y * big.mass + small.y * small.mass) / totalMass
-
-  big.vx = (big.vx * big.mass + small.vx * small.mass) / totalMass
-  big.vy = (big.vy * big.mass + small.vy * small.mass) / totalMass
-  big.x = mx
-  big.y = my
-  big.mass = totalMass
-  big.eventHorizon = 30 * Math.sqrt(totalMass)
-  big.influenceRadius = 180 * Math.sqrt(totalMass)
+  big.vx = (big.vx * big.mass + small.vx * small.mass) / total
+  big.vy = (big.vy * big.mass + small.vy * small.mass) / total
+  big.x = mx; big.y = my
+  big.mass = total
+  recalcRadii(big)
   big.shockwave = 0.01
-  big.shockwaveMass = totalMass
-  big.accretionSpeed = 0.3  // reset after merge
+  big.shockwaveMass = total
+  big.accretionSpeed = 0.25
 
   small.alive = false
-
-  return { x: mx, y: my, mass: totalMass }
+  return { x: mx, y: my, mass: total }
 }
 
 export function getHoleAtPoint(holes: BlackHole[], x: number, y: number): BlackHole | null {
@@ -195,7 +195,7 @@ export function getHoleAtPoint(holes: BlackHole[], x: number, y: number): BlackH
     const h = holes[i]!
     if (!h.alive) continue
     const dx = h.x - x, dy = h.y - y
-    if (dx * dx + dy * dy < (h.eventHorizon * 1.5) ** 2) return h
+    if (dx * dx + dy * dy < (h.eventHorizon * 1.8) ** 2) return h
   }
   return null
 }
@@ -205,7 +205,7 @@ export function getHoleNearPoint(holes: BlackHole[], x: number, y: number): Blac
     const h = holes[i]!
     if (!h.alive) continue
     const dx = h.x - x, dy = h.y - y
-    if (dx * dx + dy * dy < (h.influenceRadius * 0.8) ** 2) return h
+    if (dx * dx + dy * dy < h.exclusionRadius ** 2) return h
   }
   return null
 }
