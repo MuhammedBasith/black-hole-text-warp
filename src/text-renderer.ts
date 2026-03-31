@@ -1,6 +1,6 @@
 import type { BlackHole } from './black-hole.ts'
 import type { PositionedLine, DropCapInfo } from './text-layout.ts'
-import { BODY_FONT, BODY_LINE_HEIGHT } from './content.ts'
+import { getCurrentFont, getCurrentLineHeight } from './text-layout.ts'
 import { clamp, smoothstep, lerp } from './utils.ts'
 
 const TEXT_COLOR = '#c4b8a8'
@@ -50,13 +50,13 @@ export function drawTextLines(
   holes: BlackHole[],
   _time: number,
 ) {
-  ctx.font = BODY_FONT
+  ctx.font = getCurrentFont()
   ctx.textBaseline = 'top'
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]!
     const cx = line.x + line.width / 2
-    const cy = line.y + BODY_LINE_HEIGHT / 2
+    const cy = line.y + getCurrentLineHeight() / 2
 
     let closestDist = Infinity
     let closestHole: BlackHole | null = null
@@ -116,9 +116,9 @@ export function drawTextLines(
     ctx.fillStyle = color
     ctx.translate(line.x + pullX, line.y + pullY)
     if (Math.abs(rotation) > 0.0003) {
-      ctx.translate(line.width / 2, BODY_LINE_HEIGHT / 2)
+      ctx.translate(line.width / 2, getCurrentLineHeight() / 2)
       ctx.rotate(rotation)
-      ctx.translate(-line.width / 2, -BODY_LINE_HEIGHT / 2)
+      ctx.translate(-line.width / 2, -getCurrentLineHeight() / 2)
     }
     ctx.fillText(line.text, 0, 0)
     ctx.restore()

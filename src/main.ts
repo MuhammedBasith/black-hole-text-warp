@@ -37,6 +37,8 @@ function resize() {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
   stars = createStars(Math.floor(W * H / 5000), W, H)
   bgDirty = true
+  // Re-prepare text at new screen width for responsive font sizing
+  prepareText(PARAGRAPHS, W)
 }
 
 // ── State ──
@@ -209,18 +211,33 @@ window.addEventListener('resize', resize)
 // ── Two-column book spread ──
 
 function getColumns(): ColumnConfig[] {
-  const topMargin = 56
-  const bottomMargin = 60
-  const outerMargin = W < 600 ? 24 : W < 900 ? 40 : 72
-  const gutter = W < 600 ? 0 : W < 900 ? 36 : 52  // center gutter between columns
-
+  // Mobile: single centered column
   if (W < 600) {
-    // Mobile: single column
-    const colWidth = W - outerMargin * 2
-    return [{ x: outerMargin, width: colWidth, startY: topMargin, endY: H - bottomMargin }]
+    const maxCol = 500
+    const margin = 24
+    const colWidth = Math.min(W - margin * 2, maxCol)
+    const x = (W - colWidth) / 2  // always centered
+    const top = 44   // clear of onboarding text
+    const bottom = 52
+    return [{ x, width: colWidth, startY: top, endY: H - bottom }]
   }
 
-  // Desktop: two columns like an open book
+  // Tablet: single centered column
+  if (W < 900) {
+    const maxCol = 560
+    const margin = 40
+    const colWidth = Math.min(W - margin * 2, maxCol)
+    const x = (W - colWidth) / 2
+    const top = 48
+    const bottom = 56
+    return [{ x, width: colWidth, startY: top, endY: H - bottom }]
+  }
+
+  // Desktop: two-column book spread
+  const topMargin = 56
+  const bottomMargin = 60
+  const outerMargin = 72
+  const gutter = 52
   const maxSpread = 1200
   const availableWidth = Math.min(W - outerMargin * 2, maxSpread)
   const spreadX = (W - availableWidth) / 2
@@ -371,7 +388,7 @@ function frame(now: number) {
 async function init() {
   await document.fonts.ready
   resize()
-  prepareText(PARAGRAPHS)
+  prepareText(PARAGRAPHS, W)
   lastFrame = performance.now()
   requestAnimationFrame(frame)
 }

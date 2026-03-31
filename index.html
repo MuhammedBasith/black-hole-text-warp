@@ -17,6 +17,8 @@
       overflow: hidden;
       background: #08080e;
       -webkit-font-smoothing: antialiased;
+      -webkit-tap-highlight-color: transparent;
+      touch-action: none;
     }
     canvas { display: block; width: 100%; height: 100%; }
 
@@ -24,39 +26,46 @@
     body.cursor-grab { cursor: grab; }
     body.cursor-grabbing { cursor: grabbing; }
 
-    #hud { position: fixed; inset: 0; pointer-events: none; z-index: 10; }
+    #hud { position: fixed; inset: 0; pointer-events: none; z-index: 10; overflow: hidden; }
 
-    /* ── Onboarding: top bar, not center ── */
+    /* ── Onboarding ── */
     #onboarding {
-      position: absolute; top: 18px; left: 50%; transform: translateX(-50%);
-      text-align: center;
+      position: absolute; top: 10px; left: 0; right: 0;
+      text-align: center; padding: 0 16px;
       transition: opacity 1.8s ease;
     }
     #onboarding.hidden { opacity: 0; pointer-events: none; }
     #onboarding span {
-      font: 300 11px/1 'Inter', sans-serif;
-      letter-spacing: 0.25em; text-transform: uppercase;
-      color: rgba(196, 184, 168, 0.3);
+      font: 300 10px/1 'Inter', sans-serif;
+      letter-spacing: 0.2em; text-transform: uppercase;
+      color: rgba(196, 184, 168, 0.25);
     }
 
     /* ── Controls ── */
     #controls {
-      position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
-      display: flex; gap: 18px;
+      position: absolute; bottom: 12px; left: 0; right: 0;
+      display: flex; justify-content: center;
+      flex-wrap: wrap; gap: 10px 16px;
+      padding: 0 16px;
       opacity: 0; transition: opacity 0.8s ease 0.3s;
     }
     #controls.visible { opacity: 1; }
     .ch {
-      display: flex; align-items: center; gap: 5px;
+      display: flex; align-items: center; gap: 4px;
       color: rgba(196, 184, 168, 0.14);
-      font: 400 10px/1 'Inter', sans-serif;
-      letter-spacing: 0.08em; text-transform: uppercase;
+      font: 400 9px/1 'Inter', sans-serif;
+      letter-spacing: 0.06em; text-transform: uppercase;
+      white-space: nowrap;
     }
     .k {
       display: inline-flex; align-items: center; justify-content: center;
-      min-width: 20px; height: 20px; padding: 0 5px;
-      border: 1px solid rgba(196, 184, 168, 0.07); border-radius: 4px;
-      font-size: 9px; color: rgba(196, 184, 168, 0.18);
+      min-width: 18px; height: 18px; padding: 0 4px;
+      border: 1px solid rgba(196, 184, 168, 0.07); border-radius: 3px;
+      font-size: 8px; color: rgba(196, 184, 168, 0.18);
+    }
+    /* Hide keyboard shortcuts on mobile */
+    @media (max-width: 600px) {
+      .ch.desktop-only { display: none; }
     }
 
     #flash {
@@ -67,9 +76,9 @@
     #flash.active { opacity: 1; transition: none; }
 
     #stats {
-      position: absolute; top: 20px; right: 24px;
+      position: absolute; top: 10px; right: 16px;
       color: rgba(196, 184, 168, 0.12);
-      font: 300 10px/1.6 'Inter', sans-serif;
+      font: 300 9px/1 'Inter', sans-serif;
       letter-spacing: 0.06em;
       opacity: 0; transition: opacity 0.5s ease;
     }
@@ -85,28 +94,30 @@
     #paused-badge.visible { opacity: 1; }
 
     #attr {
-      position: absolute; bottom: 20px; right: 24px;
+      position: absolute; bottom: 12px; right: 16px;
       color: rgba(196, 184, 168, 0.08);
-      font: 300 9px/1 'Inter', sans-serif;
+      font: 300 8px/1 'Inter', sans-serif;
       letter-spacing: 0.04em;
     }
     #attr a {
       color: rgba(196, 184, 168, 0.14); text-decoration: none; pointer-events: auto;
     }
-    #attr a:hover { color: rgba(196, 184, 168, 0.28); }
+    @media (max-width: 600px) {
+      #attr { display: none; }
+    }
   </style>
 </head>
 <body>
   <div id="flash"></div>
   <div id="hud">
-    <div id="onboarding"><span>Click to create a singularity &middot; Drag to fling</span></div>
+    <div id="onboarding"><span>Tap to create a singularity</span></div>
     <div id="stats"></div>
     <div id="controls">
-      <span class="ch"><span class="k">Click</span> Create</span>
-      <span class="ch"><span class="k">Drag</span> Move / Fling</span>
-      <span class="ch"><span class="k">Scroll</span> Mass</span>
-      <span class="ch"><span class="k">R</span> Reset</span>
-      <span class="ch"><span class="k">Space</span> Pause</span>
+      <span class="ch"><span class="k">Tap</span> Create</span>
+      <span class="ch"><span class="k">Drag</span> Move</span>
+      <span class="ch desktop-only"><span class="k">Scroll</span> Mass</span>
+      <span class="ch desktop-only"><span class="k">R</span> Reset</span>
+      <span class="ch desktop-only"><span class="k">Space</span> Pause</span>
     </div>
     <div id="paused-badge">Paused</div>
     <div id="attr">Powered by <a href="https://github.com/chenglou/pretext" target="_blank" rel="noopener">pretext</a></div>

@@ -21,12 +21,29 @@ export const PARAGRAPHS = [
   `The information paradox, first raised by Stephen Hawking in 1976, asks what happens to information that falls into a black hole. If a black hole evaporates completely through Hawking radiation, and that radiation is perfectly thermal, then the information appears to be destroyed — violating a fundamental principle of quantum mechanics.`,
 ]
 
-// Classic book typography — slightly smaller for better column fit
-export const BODY_FONT = '15.5px "Cormorant Garamond", "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif'
-export const BODY_LINE_HEIGHT = 26
+const SERIF = '"Cormorant Garamond", "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif'
+
+// Responsive sizing — call with screen width
+export function getBodyFont(screenW: number): string {
+  const size = screenW < 600 ? 14 : screenW < 900 ? 15 : 15.5
+  return `${size}px ${SERIF}`
+}
+
+export function getLineHeight(screenW: number): number {
+  return screenW < 600 ? 23 : screenW < 900 ? 25 : 26
+}
+
+export function getParagraphSpacing(screenW: number): number {
+  return screenW < 600 ? 8 : 12
+}
+
 export const MIN_SLOT_WIDTH = 50
-export const PARAGRAPH_SPACING = 12  // extra pixels between paragraphs
 
 // Drop cap
-export const DROP_CAP_LINES = 3
-export const DROP_CAP_FONT_TEMPLATE = '500 {{SIZE}}px "Cormorant Garamond", Georgia, serif'
+export function getDropCapLines(screenW: number): number {
+  return screenW < 600 ? 2 : 3
+}
+
+export function getDropCapFont(size: number): string {
+  return `500 ${Math.round(size)}px ${SERIF}`
+}
