@@ -40,7 +40,7 @@ export function drawStars(
       const dx = s.x - hole.x
       const dy = s.y - hole.y
       const dist = Math.sqrt(dx * dx + dy * dy)
-      alpha *= smoothstep(hole.eventHorizon, hole.influenceRadius * 0.6, dist)
+      alpha *= smoothstep(hole.eventHorizon, hole.exclusionRadius, dist)
     }
 
     if (alpha < 0.008) continue
